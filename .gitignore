@@ -1,5 +1,5 @@
 # Datos (pesados, no se versionan)
-data/
+/data/
 *.jsonl
 *.jsonl.gz
 *.parquet

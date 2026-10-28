@@ -158,8 +158,11 @@ def main() -> None:
     parties.write.mode("overwrite").parquet(str(PROCESSED_DIR / "parties"))
     # Particionado físico por departamento de la entidad: los análisis
     # regionales leen solo las carpetas necesarias (partition pruning).
-    items.write.mode("overwrite").partitionBy("buyer_department") \
-         .parquet(str(PROCESSED_DIR / "items"))
+    # El repartition previo por la misma columna deja un archivo por
+    # departamento; sin él cada tarea escribe en cada carpeta (25 × 22 = 550
+    # archivos pequeños, ver diagnostics.py).
+    items.repartition("buyer_department").write.mode("overwrite") \
+         .partitionBy("buyer_department").parquet(str(PROCESSED_DIR / "items"))
     tenderers.write.mode("overwrite").parquet(str(PROCESSED_DIR / "tenderers"))
 
     items = spark.read.parquet(str(PROCESSED_DIR / "items"))
