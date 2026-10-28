@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contrataciones Públicas Perú</title>
+<meta name="description" content="Reporte técnico interactivo: grafos, clustering y aprendizaje de representación sobre los datos abiertos de contrataciones públicas del Perú (OCDS).">
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="inner">
+    <span class="brand">PI2 · Contrataciones Públicas del Perú</span>
+    <nav>
+      <a href="#preguntas">Preguntas</a>
+      <a href="#parte1">I. Base relacional</a>
+      <a href="#parte2">II. Clustering</a>
+      <a href="#etica">Ética</a>
+      <a href="#repro">Reproducir</a>
+    </nav>
+    <button id="theme" type="button" aria-label="Cambiar tema">◐ Tema</button>
+  </div>
+</header>
+
+<main>
+<section class="hero">
+  <div class="kicker">Proyecto Integrador 2 · Data Mining 2026-2</div>
+  <h1>Grafos, clustering y representación sobre las contrataciones públicas del Perú</h1>
+  <p class="lead">Reporte técnico interactivo sobre las adjudicaciones de 2024 del registro OCDS del Perú
+    (OECE/OSCE). Cada hallazgo es un módulo: <b>pregunta → visualización → controles → interpretación</b>.
+    Lo pesado (Spark, clustering) se calcula offline y la página solo lee artefactos ligeros
+    («calcular una vez, explorar muchas»).</p>
+  <div class="tiles" id="hero-tiles"></div>
+</section>
+
+<section id="preguntas" class="module">
+  <h3>Preguntas de interés</h3>
+  <ol>
+    <li><b>Concentración de mercado.</b> ¿Qué tipos de proveedores y de entidades concentran el monto adjudicado,
+      y cuánto pesa cada segmento frente a su número?</li>
+    <li><b>Tipologías y anomalías.</b> ¿Qué perfiles de comportamiento existen entre proveedores (diversificación,
+      tamaño, competencia, contratación directa) y entidades (competencia, concentración), y quién se sale del patrón?</li>
+    <li><b>Actores centrales y mercados.</b> ¿Qué entidades y proveedores articulan la red y qué comunidades emergen?
+      <span class="where">Partes IV–VI, en curso</span></li>
+  </ol>
+  <p style="color:var(--text-2);margin:0">Son preguntas de estructura de mercado, no de fiscalización: los resultados
+    se presentan como <b>señales descriptivas</b> para una posible revisión, nunca como acusaciones (ver <a href="#etica">Ética</a>).</p>
+</section>
+
+<!-- ============================ PARTE I ============================ -->
+<h2 class="part" id="parte1">Parte I · Transformación y base relacional con Spark</h2>
+<p class="part-sub">Toda esta parte corre en <b>Spark</b> (modo local, 16 núcleos). Del JSON anidado de OCDS se
+  construyen los tres objetos que alimentan el resto del proyecto: vectores de características, matrices de
+  interacción y grafos.</p>
+
+<div class="module">
+  <h3>Pipeline <span class="where">Spark</span></h3>
+  <div class="flow">
+    <div class="step"><b>1 · download.py</b>2024.jsonl.gz (126 MB, un registro OCDS por proceso)</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>2 · flatten.py</b><code>explode</code> de awards × suppliers × items → grano entidad–proveedor–ítem</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>3 · entity_resolution.py</b>reglas + MinHash LSH → <code>supplier_map</code></div>
+    <div class="arrow">→</div>
+    <div class="step"><b>4 · build_artifacts.py</b>features, matrices y grafos (Parquet)</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>5 · diagnostics.py</b>planes de ejecución, tiempos y diagnósticos → JSON para la web</div>
+  </div>
+</div>
+
+<div class="module">
+  <h3>Resolución de entidades <span class="where">Spark · MinHash LSH</span></h3>
+  <p class="q">¿Hay proveedores o entidades con identificadores duplicados que fragmentarían los nodos del grafo?</p>
+  <div class="tiles" id="er-tiles"></div>
+  <div class="grid2">
+    <div><div id="ch-er-types" class="chart short"></div></div>
+    <div class="scroll"><h4>Ejemplos de fusiones aceptadas</h4><table id="tb-er"></table></div>
+  </div>
+  <div class="interp">
+    <p><b>Proveedores.</b> El diagnóstico mostró que el duplicado real no es entre dos RUC (dos RUC válidos son,
+      legalmente, contribuyentes distintos y nunca se fusionan), sino un <b>código corto sin RUC</b> asignado a una
+      firma que también aparece con su RUC. Solo esos se mapean, por nombre exacto o por MinHash LSH sobre trigramas
+      (distancia de Jaccard ≤ 0.1, longitudes parecidas y sin empates).</p>
+    <p><b>Consorcios.</b> Usan códigos internos de 4–7 dígitos y nombres genéricos: «CONSORCIO SANTA ROSA» aparece con
+      92 códigos distintos. Son consorcios diferentes, así que <b>no se fusionan por nombre</b>. Fusionarlos inventaría un
+      «súper proveedor» inexistente que distorsionaría PageRank y las comunidades.</p>
+    <p><b>Entidades compradoras.</b> <span id="buyer-text"></span></p>
+  </div>
+</div>
+
+<div class="module">
+  <h3>Enlaces incompletos: adjudicaciones sin contrato <span class="where">Spark</span></h3>
+  <p class="q">¿Con qué evento se construye la arista entidad–proveedor: la adjudicación o el contrato?</p>
+  <div class="grid2">
+    <div id="ch-contract" class="chart short"></div>
+    <div id="ch-contract-cat" class="chart short"></div>
+  </div>
+  <div class="interp">
+    <p id="contract-text"></p>
+    <p><b>Decisión.</b> La arista se toma de la <b>adjudicación</b> (<code>awards</code>), que ya fija quién vende a quién.
+      Exigir contrato quitaría más de una cuarta parte del monto y sesgaría contra las obras, el rubro con más
+      adjudicaciones sin contrato publicado (lo más probable es un rezago de registro, no una venta que no ocurrió).
+      Se conserva la marca <code>has_contract</code> para repetir cualquier análisis solo con contratos firmados.</p>
+  </div>
+</div>
+
+<div class="module">
+  <h3>Artefactos base exportados <span class="where">Spark → Parquet</span></h3>
+  <div class="scroll"><table id="tb-artifacts"></table></div>
+  <div class="interp">
+    <p><b>Criterio de aristas de co-participación.</b> Dos proveedores se conectan si se presentaron como postores al
+      mismo proceso. Cada proceso con <i>n</i> postores aporta <code>1/(n−1)</code> a cada par: una subasta con 200
+      postores no debe pesar lo mismo que un concurso con 3, donde competir sí indica un mercado común. Se exigen
+      ≥ 2 procesos en común para descartar coincidencias aisladas. El grafo bipartito entidad → proveedor pesa por
+      monto y n.º de procesos.</p>
+  </div>
+</div>
+
+<div class="module" id="particionamiento">
+  <h3>Particionamiento y plan de ejecución <span class="where">Spark · explain()</span></h3>
+  <p class="q">¿Cómo cambia el plan físico según cómo se particionan los datos, y cuánto se gana en tiempo?</p>
+  <p style="margin-top:0">Tres experimentos sobre los datos reales (mediana de 5 corridas tras un calentamiento,
+    medida con la acción <code>noop</code> para no contar la escritura). Modo local con
+    <span id="par-cores"></span> núcleos.</p>
+
+  <h4>1 · Un .gz no es divisible: una sola partición</h4>
+  <div class="grid2">
+    <div id="ch-gz" class="chart short"></div>
+    <div class="interp" style="margin-top:0">
+      <p id="gz-text"></p>
+      <p>En el plan aparece como <code>Exchange RoundRobinPartitioning(32)</code>: un shuffle que se paga una sola vez,
+        porque el resultado se cachea y luego se recorre tres veces (parties, items, tenderers).</p>
+    </div>
+  </div>
+
+  <h4>2 · <code>partitionBy(buyer_department)</code> → partition pruning</h4>
+  <div class="controls">
+    <span>Consulta:</span>
+    <div class="seg" id="seg-query">
+      <button class="on" data-v="cusco">Filtro por departamento (Cusco)</button>
+      <button data-v="full">Escaneo completo</button>
+    </div>
+  </div>
+  <div class="grid2">
+    <div id="ch-layout-time" class="chart short"></div>
+    <div id="ch-layout-files" class="chart short"></div>
+  </div>
+  <div class="controls">
+    <span>Plan físico:</span>
+    <div class="seg" id="seg-plan">
+      <button class="on" data-v="partitioned">Particionado</button>
+      <button data-v="flat">Sin particionar</button>
+    </div>
+  </div>
+  <pre class="plan" id="plan-view"></pre>
+  <div class="interp">
+    <p id="pruning-text"></p>
+    <p><b>Mejora aplicada.</b> La primera versión escribía con <code>partitionBy</code> sin reparticionar antes: cada una
+      de las 22 tareas escribía un archivo en cada carpeta, <b>550 archivos pequeños</b>. Eso empeora el escaneo completo
+      (abrir archivos cuesta más que leerlos). Ahora <code>flatten.py</code> hace <code>repartition("buyer_department")</code>
+      antes de escribir: un archivo por departamento. El costo es el <i>skew</i>: Lima tiene el 38 % de los ítems en un
+      solo archivo. Con 98 mil filas es aceptable; con el histórico habría que añadir <code>maxRecordsPerFile</code>.</p>
+  </div>
+
+  <h4>3 · Shuffle del self-join de co-participación</h4>
+  <div class="grid2">
+    <div id="ch-shuffle" class="chart short"></div>
+    <div class="interp" style="margin-top:0">
+      <p id="shuffle-text"></p>
+    </div>
+  </div>
+  <details><summary>Ver plan físico completo de la co-participación</summary>
+    <pre class="plan" id="plan-copart"></pre></details>
+</div>
+
+<!-- ============================ PARTE II ============================ -->
+<h2 class="part" id="parte2">Parte II · Clustering y detección de anomalías</h2>
+<p class="part-sub">Corre en <b>local</b> (scikit-learn y SciPy). Los vectores ya vienen agregados por actor desde
+  Spark: 49 569 proveedores × 12 variables y 2 917 entidades × 9 caben en memoria. Además, DBSCAN, HDBSCAN y el
+  jerárquico no existen en Spark MLlib, así que Spark solo añadiría coste de arranque.</p>
+
+<div class="module">
+  <h3>Variables, estandarización y reducción de dimensión</h3>
+  <p class="q">¿Qué describe el comportamiento de un actor y cómo se lleva a una escala comparable?</p>
+  <div class="controls">
+    <span>Actor:</span>
+    <div class="seg seg-entity" data-target="vars">
+      <button class="on" data-v="proveedores">Proveedores</button><button data-v="entidades">Entidades</button>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="scroll"><table id="tb-vars"></table></div>
+    <div>
+      <div id="ch-pca" class="chart short"></div>
+      <div id="ch-loadings" class="chart short"></div>
+    </div>
+  </div>
+  <div class="interp">
+    <p><b>Transformación.</b> Montos y conteos tienen cola pesadísima: el 75 % de los proveedores ganó un solo
+      proceso, pero el máximo ganó 590. Sin <code>log1p</code>, KMeans dedicaría sus centroides a una decena de gigantes.
+      Las proporciones (% bienes, % directa, dependencia del cliente) ya están en [0, 1] y se dejan igual. Luego
+      todo se estandariza (z-score) para que ninguna variable domine por su escala. % servicios se omite porque es
+      1 − % bienes − % obras (colineal).</p>
+    <p><b>PCA</b> retiene el 90 % de la varianza (<span id="pca-text"></span>). Decorrelaciona variables que van juntas
+      (procesos, clientes y departamentos miden «alcance») y quita ruido para los métodos de densidad, que sufren en
+      alta dimensión. En proveedores, <b>PC1 = alcance</b> (procesos, clientes, departamentos en contra de la
+      dependencia de un cliente) y <b>PC2 = tamaño y tipo de contrato</b> (monto, obras, competencia).</p>
+  </div>
+</div>
+
+<div class="module">
+  <h3>Hallazgo 1 · KMeans++: tipologías de comportamiento <span class="where">en vivo</span></h3>
+  <p class="q">¿Qué perfiles de proveedores y entidades existen y cuánto del gasto concentra cada uno?</p>
+  <div class="controls">
+    <span>Actor:</span>
+    <div class="seg seg-entity" data-target="km">
+      <button class="on" data-v="proveedores">Proveedores</button><button data-v="entidades">Entidades</button>
+    </div>
+    <label>k <input type="range" id="k-slider" min="2" max="8" step="1"><output id="k-out"></output></label>
+    <span style="color:var(--text-2)">KMeans++ recalculado en el navegador sobre <span id="km-n"></span> puntos (espacio PCA)</span>
+  </div>
+  <div class="grid2">
+    <div id="ch-km" class="chart tall"></div>
+    <div>
+      <div id="ch-elbow" class="chart short"></div>
+      <div id="ch-sil" class="chart short"></div>
+    </div>
+  </div>
+  <h4>Perfiles del k elegido (<span id="kbest-label"></span>) sobre la población completa</h4>
+  <div id="ch-heat" class="chart"></div>
+  <div class="cards" id="km-cards"></div>
+  <div class="interp" id="km-interp"></div>
+</div>
+
+<div class="module">
+  <h3>Hallazgo 2 · Densidad: DBSCAN y HDBSCAN <span class="where">en vivo</span></h3>
+  <p class="q">¿Hay grupos densos que KMeans no ve, y qué puntos quedan fuera de toda zona densa?</p>
+  <div class="controls">
+    <span>Actor:</span>
+    <div class="seg seg-entity" data-target="db">
+      <button class="on" data-v="proveedores">Proveedores</button><button data-v="entidades">Entidades</button>
+    </div>
+    <label>eps <input type="range" id="eps-slider" min="0.2" max="4" step="0.05"><output id="eps-out"></output></label>
+    <label>min_samples <input type="range" id="ms-slider" min="3" max="40" step="1"><output id="ms-out"></output></label>
+  </div>
+  <div class="grid2">
+    <div id="ch-db" class="chart tall"></div>
+    <div>
+      <div id="ch-kdist" class="chart short"></div>
+      <div class="tiles" id="db-tiles"></div>
+    </div>
+  </div>
+  <h4>HDBSCAN sobre la población completa</h4>
+  <div class="scroll"><table id="tb-hdb"></table></div>
+  <div class="interp" id="db-interp"></div>
+</div>
+
+<div class="module">
+  <h3>Hallazgo 3 · Jerárquico (Ward) y dendrograma <span class="where">en vivo</span></h3>
+  <p class="q">¿La estructura de grupos es jerárquica y estable frente al método?</p>
+  <div class="controls">
+    <span>Actor:</span>
+    <div class="seg seg-entity" data-target="ward">
+      <button class="on" data-v="proveedores">Proveedores</button><button data-v="entidades">Entidades</button>
+    </div>
+    <label>Altura de corte <input type="range" id="cut-slider" min="0" max="100" step="1"><output id="cut-out"></output></label>
+  </div>
+  <div id="ch-dendro" class="chart tall"></div>
+  <div class="interp" id="ward-interp"></div>
+</div>
+
+<div class="module">
+  <h3>Hallazgo 4 · Outliers: quién se sale del patrón</h3>
+  <p class="q">¿Qué actores no pertenecen a ninguna zona densa y por qué?</p>
+  <div class="controls">
+    <span>Actor:</span>
+    <div class="seg seg-entity" data-target="out">
+      <button class="on" data-v="proveedores">Proveedores</button><button data-v="entidades">Entidades</button>
+    </div>
+  </div>
+  <div class="scroll"><table id="tb-out"></table></div>
+  <div class="interp" id="out-interp"></div>
+  <div class="interp ethic">
+    <p><b>Lectura responsable.</b> «Outlier» significa estadísticamente atípico respecto de las variables elegidas,
+      no irregular. La mayoría de los proveedores atípicos son grandes empresas nacionales que venden a cientos de
+      entidades. En entidades, una alta contratación directa o muchos procesos con postor único pueden deberse a
+      emergencias, mercados remotos con pocos oferentes o bienes con un único fabricante. Son <b>señales para una
+      revisión</b>, no conclusiones.</p>
+  </div>
+</div>
+
+<div class="module">
+  <h3>Conclusiones de la Parte II</h3>
+  <div class="interp" id="p2-conclusions">
+    <p><b>1 · El gasto está muy concentrado en pocos perfiles.</b> Entre los proveedores, los consorcios de obra
+      (17 % de los proveedores) se llevan el 57 % del monto, y los proveedores nacionales multicliente (3 %) otro 19 %.
+      Entre las entidades, los grandes compradores (23 %) gastan el 81 %. La mitad de los proveedores son de servicios
+      o bienes con un solo contrato y casi no pesan en el monto.</p>
+    <p><b>2 · El consorcio es un vehículo de obra de un solo uso.</b> Su perfil típico: un proceso, una entidad, un
+      departamento, 15 competidores y tasa de éxito 1. Se forma para una licitación y desaparece. Por eso, en las
+      Partes IV–V, los consorcios deben leerse como aristas de alianza entre empresas más que como nodos persistentes.</p>
+    <p><b>3 · KMeans y la densidad responden preguntas distintas.</b> KMeans parte un espacio casi continuo en
+      tipologías útiles (silueta 0.30), mientras que HDBSCAN encuentra pilas densas casi idénticas (mismo % bienes,
+      un proceso) y deja como ruido a los actores mixtos y grandes: el 25 % de los proveedores, pero el 59 % del monto.
+      Para anomalías, el ruido de HDBSCAN más la distancia al centroide funciona mejor que cualquiera de los dos por separado.</p>
+    <p><b>4 · Señal para revisión.</b> Hay un segmento de ~100 entidades con contratación directa en la mitad de sus
+      ítems y un solo postor en el 40 %, y otro de ~290 con un solo postor sin contratación directa, más presente en la
+      Amazonía (Loreto, San Martín). Es el insumo natural para cruzar con las comunidades de la Parte V.</p>
+  </div>
+</div>
+
+<!-- ============================ ÉTICA / REPRO ============================ -->
+<h2 class="part" id="etica">Encuadre ético</h2>
+<div class="module">
+  <ul>
+    <li><b>Señales, no acusaciones.</b> Ningún clúster, outlier o comunidad implica colusión ni irregularidad. Los
+      indicadores (postor único, contratación directa, dependencia de un cliente) tienen explicaciones legítimas:
+      emergencias, mercados remotos, bienes exclusivos.</li>
+    <li><b>Personas naturales.</b> Los proveedores con RUC 10 son personas. Aunque el dato es público, en esta página
+      su nombre se <b>enmascara</b> (solo los últimos 4 dígitos del RUC): exponer a una persona en una lista de
+      «atípicos» no aporta al análisis de mercado.</li>
+    <li><b>Sesgo de cobertura.</b> Se analiza un año (2024) y solo procesos publicados en OCDS. Las adjudicaciones sin
+      contrato se conservan con una marca, y los consorcios no se fusionan, para no inventar actores.</li>
+    <li><b>Transparencia.</b> El código, los parámetros y los artefactos están publicados, de modo que cualquier
+      resultado puede reproducirse y discutirse.</li>
+  </ul>
+</div>
+
+<h2 class="part" id="repro">Reproducibilidad y fuente</h2>
+<div class="module">
+  <pre class="plan">pip install -r requirements.txt
+python -m src.parte1.download --years 2024     # datos OCDS
+python -m src.parte1.flatten                   # Spark: aplanado
+python -m src.parte1.entity_resolution         # Spark: MinHash LSH
+python -m src.parte1.build_artifacts           # Spark: features, matrices, grafos
+python -m src.parte1.diagnostics               # Spark: planes y tiempos → web/data/parte1.js
+python -m src.parte2.clustering                # local: clustering → web/data/parte2.js</pre>
+  <p><b>Fuente de datos:</b> Registro OCDS – Perú (OECE/OSCE),
+    <a href="https://data.open-contracting.org/es/publication/135">data.open-contracting.org/es/publication/135</a>.
+    Licencia <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</p>
+</div>
+</main>
+
+<footer>
+  Proyecto Integrador 2 · Data Mining 2026-2 · Prof. Heider Sanchez.
+  Datos: OECE/OSCE, estándar OCDS, CC BY 4.0.
+</footer>
+
+<script src="data/parte1.js"></script>
+<script src="data/parte2.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

@@ -23,7 +23,7 @@ Licencia CC BY 4.0.
 src/
   common/        utilidades compartidas (sesión Spark, rutas)
   parte1/        Parte I  – aplanado OCDS, resolución de entidades, artefactos base (Spark)
-  parte2/        Parte II – clustering y anomalías
+  parte2/        Parte II – clustering y anomalías (local)
   parte3/        Parte III – sistemas de recomendación
   parte4/        Parte IV – PageRank y HITS
   parte5/        Parte V  – detección de comunidades
@@ -97,14 +97,54 @@ Datos 2024 (primera corrida): 98 292 ítems adjudicados, 2 917 entidades,
 49 582 proveedores, ~S/ 73.8 mil millones; 85 % de los ítems tienen contrato
 vinculado.
 
+```bash
+# 5. Diagnósticos y particionamiento (Spark): explain(), tiempos y export a la web
+python -m src.parte1.diagnostics
+```
+
+Genera `artifacts/parte1/diagnostics.json` y `web/data/parte1.js`. Mide:
+
+- **Compradores:** los 2 917 `buyer_id` son únicos; los 2 nombres repetidos son
+  distritos homónimos de departamentos distintos, no duplicados.
+- **Enlaces incompletos:** 15 % de los ítems no tiene contrato vinculado pero
+  suman el 28 % del monto (29 % de las obras). La arista se toma de la
+  adjudicación y se conserva `has_contract`.
+- **Particionamiento:** el `.gz` se lee en 1 partición; `repartition(32)` baja
+  el aplanado de 6.2 s a 4.1 s. `partitionBy(buyer_department)` convierte el
+  filtro en `PartitionFilters` (1 de 25 archivos, ~3.5× más rápido que sin
+  particionar). Sin `repartition` previo se generaban 550 archivos pequeños.
+  En el self-join de co-participación, 32 particiones de shuffle tardan 3.8 s
+  frente a 6.0 s con las 200 por defecto.
+
+### Parte II — Clustering y anomalías (local)
+
+```bash
+python -m src.parte2.clustering
+```
+
+Corre en local (scikit-learn/SciPy): los vectores agregados caben en memoria y
+DBSCAN/HDBSCAN/jerárquico no existen en Spark MLlib. Para proveedores (k = 6) y
+entidades (k = 5): log1p + estandarización, PCA al 90 % de varianza, KMeans++
+(codo, silueta, Davies-Bouldin), HDBSCAN, DBSCAN (eps por codo de
+k-distancias) y Ward sobre muestra (dendrograma, ARI frente a KMeans). Exporta
+`artifacts/parte2/clustering.json` y `web/data/parte2.js`.
+
+## Reporte web
+
+`web/` es una página estática (HTML + JS + Plotly) que lee los `.js` de
+`web/data/`. Para verla en local basta con abrir `web/index.html`. Se publica en
+GitHub Pages con `.github/workflows/pages.yml` (Settings → Pages → Source =
+GitHub Actions). KMeans++, DBSCAN y el corte del dendrograma se recalculan en
+vivo en el navegador.
+
 ## Avance
 
 | Parte | Estado |
 |-------|--------|
 | I. Transformación y base relacional (Spark) | listo (2024) |
-| II. Clustering y anomalías | pendiente |
+| II. Clustering y anomalías | listo |
 | III. Recomendación | pendiente |
 | IV. PageRank / HITS | pendiente |
 | V. Comunidades | pendiente |
 | VI. Embeddings | pendiente |
-| VII. Discusión y reporte web | pendiente |
+| VII. Discusión y reporte web | reporte web con Partes I–II |
