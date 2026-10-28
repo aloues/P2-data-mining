@@ -1,0 +1,8 @@
+{
+  "supplier_features": 49569,
+  "buyer_features": 2917,
+  "inter_buyer_supplier": 73778,
+  "inter_buyer_family": 30218,
+  "edges_bipartite": 73778,
+  "edges_coparticipation": 1760602
+}

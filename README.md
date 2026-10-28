@@ -73,6 +73,26 @@ esquema PE-RUC y sus nombres son genéricos ("CONSORCIO SANTA ROSA" aparece con
 92 códigos distintos), por lo que nunca se fusionan por nombre. Solo se unen
 IDs sin RUC válido a un RUC válido cuando el nombre coincide (63 casos en 2024).
 
+```bash
+# 4. Artefactos base: features, matrices de interacción y grafos
+python -m src.parte1.build_artifacts
+```
+
+Salidas en `artifacts/parte1/` (Parquet, no versionado; `summary.json` sí):
+
+| Artefacto | Filas (2024) | Uso |
+|-----------|-------------:|-----|
+| `supplier_features` | 49 569 | clustering de proveedores (Parte II) |
+| `buyer_features` | 2 917 | clustering de entidades (Parte II) |
+| `inter_buyer_supplier` | 73 778 | recomendación (Parte III) |
+| `inter_buyer_family` | 30 218 | recomendación por contenido / SVD (Partes III y VI) |
+| `edges_bipartite` | 73 778 | PageRank y HITS (Parte IV) |
+| `edges_coparticipation` | 1 760 602 | comunidades y embeddings (Partes V y VI) |
+
+Criterio de aristas de co-participación: dos proveedores se conectan si
+postularon al mismo proceso; cada proceso con *n* postores aporta 1/(n−1) al
+par y se exigen ≥ 2 procesos en común.
+
 Datos 2024 (primera corrida): 98 292 ítems adjudicados, 2 917 entidades,
 49 582 proveedores, ~S/ 73.8 mil millones; 85 % de los ítems tienen contrato
 vinculado.
@@ -81,7 +101,7 @@ vinculado.
 
 | Parte | Estado |
 |-------|--------|
-| I. Transformación y base relacional (Spark) | en progreso |
+| I. Transformación y base relacional (Spark) | listo (2024) |
 | II. Clustering y anomalías | pendiente |
 | III. Recomendación | pendiente |
 | IV. PageRank / HITS | pendiente |

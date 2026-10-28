@@ -8,8 +8,11 @@ metastore_db/
 derby.log
 
 # Artefactos grandes generados (solo se versionan los ligeros para la web)
-artifacts/**/*.parquet
-artifacts/tmp/
+artifacts/**
+!artifacts/**/
+!artifacts/**/*.json
+!artifacts/**/*.csv
+!artifacts/.gitkeep
 
 # Python
 __pycache__/
