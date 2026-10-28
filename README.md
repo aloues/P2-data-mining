@@ -62,6 +62,17 @@ Salidas en `data/processed/`: `items` (particionado por departamento de la
 entidad), `tenderers` (postores por proceso, para el grafo de co-participación)
 y `parties` (catálogo de actores).
 
+```bash
+# 3. Resolución de entidades de proveedores (reglas + MinHash/LSH en Spark)
+python -m src.parte1.entity_resolution
+```
+
+Genera `data/processed/supplier_map` (`supplier_id → canonical_id`). Hallazgos
+del diagnóstico: los consorcios usan códigos internos de 4–7 dígitos bajo el
+esquema PE-RUC y sus nombres son genéricos ("CONSORCIO SANTA ROSA" aparece con
+92 códigos distintos), por lo que nunca se fusionan por nombre. Solo se unen
+IDs sin RUC válido a un RUC válido cuando el nombre coincide (63 casos en 2024).
+
 Datos 2024 (primera corrida): 98 292 ítems adjudicados, 2 917 entidades,
 49 582 proveedores, ~S/ 73.8 mil millones; 85 % de los ítems tienen contrato
 vinculado.

@@ -1,5 +1,6 @@
 """Creación de la sesión de Spark en modo local."""
 import os
+import sys
 from pathlib import Path
 
 from pyspark.sql import SparkSession
@@ -19,6 +20,9 @@ def _ensure_hadoop_home() -> None:
 def get_spark(app_name: str = "bd2-p2", driver_memory: str = "6g",
               shuffle_partitions: int = 32) -> SparkSession:
     _ensure_hadoop_home()
+    # Los workers deben usar el mismo intérprete que el driver (en Windows
+    # "python" puede resolver al alias de la Microsoft Store).
+    os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
     # En local el valor por defecto de 200 particiones de shuffle genera
     # demasiadas tareas pequeñas; 32 se ajusta mejor a un portátil.
     return (
