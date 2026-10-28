@@ -1,0 +1,27 @@
+# Datos (pesados, no se versionan)
+data/
+*.jsonl
+*.jsonl.gz
+*.parquet
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Artefactos grandes generados (solo se versionan los ligeros para la web)
+artifacts/**/*.parquet
+artifacts/tmp/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+.env
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+~$*.docx
