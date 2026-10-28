@@ -44,6 +44,10 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+**Windows:** Spark necesita `winutils.exe` y `hadoop.dll` (Hadoop 3.3) para
+escribir Parquet. Colocarlos en `%USERPROFILE%\hadoop\bin`; `get_spark()` define
+`HADOOP_HOME` automáticamente si encuentra esa carpeta.
+
 ## Ejecución
 
 ```bash
@@ -53,6 +57,14 @@ python -m src.parte1.download --years 2024
 # 2. Aplanar OCDS al grano entidad–proveedor–ítem (Spark)
 python -m src.parte1.flatten
 ```
+
+Salidas en `data/processed/`: `items` (particionado por departamento de la
+entidad), `tenderers` (postores por proceso, para el grafo de co-participación)
+y `parties` (catálogo de actores).
+
+Datos 2024 (primera corrida): 98 292 ítems adjudicados, 2 917 entidades,
+49 582 proveedores, ~S/ 73.8 mil millones; 85 % de los ítems tienen contrato
+vinculado.
 
 ## Avance
 
